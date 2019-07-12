@@ -54,8 +54,6 @@ chip_step :: proc(using c: ^Chip) {
     //TODO: Have these be actual timers
     now := sdl.get_performance_counter();
 
-    fmt.println("sound_timer:", sound_timer);
-
     if f64(now - last_time_delay) / f64(sdl.get_performance_frequency()) > 1.0/60.0 {
         last_time_delay = now;
         if delay_timer > 0 {
@@ -401,13 +399,13 @@ chip_print_state :: proc(using c: ^Chip) {
     }
 }
 
-main :: proc() {
+init_sdl :: proc() -> (window: ^sdl.Window, renderer: ^sdl.Renderer, device: sdl.Audio_Device_Id) {
     sdl.init(.Everything);
-    window := sdl.create_window("chip8", i32(sdl.Window_Pos.Undefined), i32(sdl.Window_Pos.Undefined), 64 * 15, 32 * 15, .Resizable);
-    renderer := sdl.create_renderer(window, -1, .Accelerated);
+    window = sdl.create_window("chip8", i32(sdl.Window_Pos.Undefined), i32(sdl.Window_Pos.Undefined), 64 * 15, 32 * 15, .Resizable);
+    renderer = sdl.create_renderer(window, -1, .Accelerated);
     sdl.render_set_logical_size(renderer, 64, 32);
 
-    counter := 0;
+    counter := new(u64);
     want := sdl.Audio_Spec{
         freq = 44100,
         /*
@@ -426,7 +424,7 @@ main :: proc() {
         format = 0b1_00_0_000_0_00010000,
         channels = 1,
         samples = 512,
-        userdata = &counter,
+        userdata = counter,
 
         callback = proc "c" (userdata: rawptr, stream_in: ^u8, len: i32) {
             // This clearly demonstrate that there is something I dont fully understand about computer audio. 
@@ -455,12 +453,12 @@ main :: proc() {
                 counter := cast(^u64) userdata;
 
                 for i := 0; i < int(len)/2; i += 1 {
-                    if counter^ == u64(T)*2 {
+                    if counter^ == u64(T) {
                         counter^ = 0;
                     }
                     counter^ += 1;
 
-                    val := counter^ >= u64(T) ? HIGH : LOW;
+                    val := counter^ >= u64(T)/2 ? HIGH : LOW;
                     stream[i*2] = u8(val & 0xFF);
                     stream[i*2+1] = u8(u16(val) & 0xFF00 >> 8);
                 }
@@ -469,7 +467,7 @@ main :: proc() {
     };
 
     obtained: sdl.Audio_Spec;
-    device := sdl.open_audio_device(nil, 0, &want, &obtained, 0);
+    device = sdl.open_audio_device(nil, 0, &want, &obtained, 0);
     if device < 0 {
         fmt.println("failed to open audio\nSDL_Error:", sdl.get_error());
         fmt.println("want:", want);
@@ -478,11 +476,17 @@ main :: proc() {
     }
     if want.format != obtained.format do panic("Invalid audio format, even though SDL said we would get one");
 
+    return;
+}
+
+main :: proc() {
+    window, renderer, device := init_sdl();
+
     c: Chip;
     chip_init(&c);
     //chip_load_file(&c, "test_opcode.ch8");
     //chip_load_file(&c, "programs/IBM Logo.ch8");
-    //chip_load_file(&c, "programs/PONG(1P).ch8");
+    chip_load_file(&c, "programs/PONG(1P).ch8");
     //chip_load_file(&c, "programs/Clock Program [Bill Fisher, 1981].ch8");
     //chip_load_file(&c, "programs/Jumping X and O [Harry Kleinberg, 1977].ch8");
     //chip_load_file(&c, "programs/Life [GV Samways, 1980].ch8");
@@ -491,7 +495,7 @@ main :: proc() {
     //chip_load_file(&c, "programs/Breakout (Brix hack) [David Winter, 1997].ch8");
     //chip_load_file(&c, "programs/Tic-Tac-Toe [David Winter].ch8");
     //chip_load_file(&c, "programs/Brix [Andreas Gustafsson, 1990].ch8");
-    chip_load_file(&c, "programs/Lunar Lander (Udo Pernisz, 1979).ch8");
+    //chip_load_file(&c, "programs/Lunar Lander (Udo Pernisz, 1979).ch8");
     //chip_load_file(&c, "programs/Minimal game [Revival Studios, 2007].ch8");
     //chip_load_file(&c, "programs/Random Number Test [Matthew Mikolay, 2010].ch8");
     //chip_load_file(&c, "programs/Delay Timer Test [Matthew Mikolay, 2010].ch8");
@@ -668,7 +672,7 @@ main :: proc() {
         if c.sound_timer > 0 {
             sdl.pause_audio_device(device, 0);
         } else if c.sound_timer == 0 {
-            sdl.pause_audio_device(device, 1);
+            sdl.pause_audio_device(device, 0);
         }
 
         if !STEPPING do step = true;
