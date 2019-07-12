@@ -21,6 +21,9 @@ Chip :: struct {
     wait_for_key: bool,
     wait_for_key_reg: u8,
 
+    last_time_delay: u64,
+    last_time_sound: u64,
+
     display: []u8,
     display_width, display_height: int,
 }
@@ -41,13 +44,33 @@ chip_init :: proc(using c: ^Chip, is_schip := false) {
     display_height = 32;
     display = make([]u8, display_width * display_height);
 
+    last_time_delay = sdl.get_performance_counter();
+    last_time_sound = sdl.get_performance_counter();
+
     copy(mem[:], FONT);
 }
 
 chip_step :: proc(using c: ^Chip) {
     //TODO: Have these be actual timers
-    if delay_timer > 0 do delay_timer -= 1;
-    if sound_timer > 0 do sound_timer -= 1;
+    now := sdl.get_performance_counter();
+
+    fmt.println("sound_timer:", sound_timer);
+
+    if f64(now - last_time_delay) / f64(sdl.get_performance_frequency()) > 1.0/60.0 {
+        last_time_delay = now;
+        if delay_timer > 0 {
+            delay_timer -= 1;
+        }
+    }
+
+    if f64(now - last_time_sound) / f64(sdl.get_performance_frequency()) > 1.0/60.0 {
+        last_time_sound = now;
+        if sound_timer > 0 {
+            sound_timer -= 1;
+        }
+    }
+    //if delay_timer > 0 do delay_timer -= 1;
+    //if sound_timer > 0 do sound_timer -= 1;
 
     if wait_for_key {
         for v, index in keypad {
@@ -404,7 +427,7 @@ main :: proc() {
         channels = 1,
         samples = 512,
         userdata = &counter,
-        
+
         callback = proc "c" (userdata: rawptr, stream_in: ^u8, len: i32) {
             // This clearly demonstrate that there is something I dont fully understand about computer audio. 
             // Why is my square wave not actually 440hz >:(
@@ -463,14 +486,15 @@ main :: proc() {
     //chip_load_file(&c, "programs/Clock Program [Bill Fisher, 1981].ch8");
     //chip_load_file(&c, "programs/Jumping X and O [Harry Kleinberg, 1977].ch8");
     //chip_load_file(&c, "programs/Life [GV Samways, 1980].ch8");
-    chip_load_file(&c, "programs/Keypad Test [Hap, 2006].ch8");
+    //chip_load_file(&c, "programs/Keypad Test [Hap, 2006].ch8");
     //chip_load_file(&c, "programs/15 Puzzle [Roger Ivie] (alt).ch8");
     //chip_load_file(&c, "programs/Breakout (Brix hack) [David Winter, 1997].ch8");
     //chip_load_file(&c, "programs/Tic-Tac-Toe [David Winter].ch8");
     //chip_load_file(&c, "programs/Brix [Andreas Gustafsson, 1990].ch8");
-    //chip_load_file(&c, "programs/Lunar Lander (Udo Pernisz, 1979).ch8");
+    chip_load_file(&c, "programs/Lunar Lander (Udo Pernisz, 1979).ch8");
     //chip_load_file(&c, "programs/Minimal game [Revival Studios, 2007].ch8");
     //chip_load_file(&c, "programs/Random Number Test [Matthew Mikolay, 2010].ch8");
+    //chip_load_file(&c, "programs/Delay Timer Test [Matthew Mikolay, 2010].ch8");
 
     set_op :: proc(offs: int, using c: ^Chip, op: u16) -> int {
         mem[offs]   = u8(op & 0xFF00 >> 8);
@@ -635,8 +659,6 @@ main :: proc() {
         sdl.set_render_draw_color(renderer, FOREGROUND_COLOR.r, FOREGROUND_COLOR.g, FOREGROUND_COLOR.b, FOREGROUND_COLOR.a);
         for y := 0; y < c.display_height; y += 1 {
             for x := 0; x < c.display_width; x += 1 {
-                //color := u8(c.display[x+y*c.display_width] > 0 ? 255 : 0);
-                //sdl.set_render_draw_color(renderer, color, color, color, color);
                 if u8(c.display[x+y*c.display_width]) > 0 {
                     sdl.render_draw_point(renderer, auto_cast x, auto_cast y);
                 }
